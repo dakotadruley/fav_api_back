@@ -15,7 +15,7 @@ async function run() {
             );
         
             CREATE TABLE favorites (
-                id VARCHAR(64) PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 title VARCHAR(256) NOT NULL,
                 href VARCHAR(512) NOT NULL,
                 ingredients VARCHAR(256) NOT NULL,

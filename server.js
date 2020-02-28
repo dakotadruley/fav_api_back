@@ -7,12 +7,12 @@ const cors = require('cors');
 const morgan = require('morgan');
 // Database Client
 const client = require('./lib/client');
-// Services
-const api = require('./lib/api');
 
 // Auth
+const request = require('superagent');
 const ensureAuth = require('./lib/auth/ensure-auth');
 const createAuthRoutes = require('./lib/auth/create-auth-routes');
+
 const authRoutes = createAuthRoutes({
     async selectUser(email) {
         const result = await client.query(`
@@ -40,44 +40,28 @@ app.use(morgan('dev')); // http logging
 app.use(cors()); // enable CORS request
 app.use(express.static('public')); // server files from /public folder
 app.use(express.json()); // enable reading incoming json data
+app.use(express.urlencoded({ extended: true }));
 
 // setup authentication routes
 app.use('/api/auth', authRoutes);
 
 // everything that starts with "/api" below here requires an auth token!
-app.use('/api', ensureAuth);
+app.use('/api/me', ensureAuth);
 
 // *** API Routes ***
+
 app.get('/api/recipes', async (req, res) => {
-
     try {
-        const query = req.query;
 
-        // get the data from the third party API
-        const recipes = await api.get(query.search, query.page);
+        const response = await request.get(`http://www.recipepuppy.com/api/?i=${req.query.search}&p=1`);
+        // hard coded at 1 but can change in the future
+      
+        const responseObject = JSON.parse(response.text);
+        // returns an array of object responses
 
-        // This part is coded after initial functionality is complete...
-
-        // Select these ids from the favorites table, for _this user_
-        const favorites = await client.query(`
-            SELECT id
-            FROM   favorites
-            WHERE  user_id = $1;
-        `, [req.userId]);
-
-        // make a lookup of all favorite ids:
-
-        const lookup = favorites.rows.reduce((acc, recipe) => {
-            acc[recipe.id] = true;
-            return acc;
-        }, {});
-
-        // adjust the favorite property of each item:
-        recipes.forEach(recipe => recipe.isFavorite = lookup[recipe.id] || false);
-
-        // Ship it!
-        res.json(recipes);
-    }
+        res.json(responseObject.results);
+       
+    }     
     catch (err) {
         console.log(err);
         res.status(500).json({
@@ -86,22 +70,17 @@ app.get('/api/recipes', async (req, res) => {
     }
 });
 
-app.get('/api/me/favorites', async (req, res) => {
-    // Get the favorites _for the calling user_
-    try {
-        const result = await client.query(`
-            SELECT id, 
-                   title, 
-                   href, 
-                   ingredients,
-                   thumbnail, 
-                   user_id as "userId", 
-                   TRUE as "isFavorite"
-            FROM   favorites
-            WHERE user_id = $1;
-        `, [req.userId]);
+app.get('/api/me/recipes', async (req, res) => {
 
-        res.json(result.rows);
+    try {
+        const myQuery = `
+        SELECT *
+        FROM favorites
+        WHERE user_id=$1`;
+
+        const favorites = await client.query(myQuery, [req.user_id]);
+
+        res.json(favorites.rows);
     }
     catch (err) {
         console.log(err);
